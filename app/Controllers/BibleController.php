@@ -27,27 +27,46 @@ class BibleController extends BaseController
      */
     private function resolveActiveVersion(): string
     {
-        // Default system fallback
-        $version = 'kjv';
+        $allowed = ['kjv', 'asv', 'web', 'bbe', 'rv_1909'];
 
-        // Check if an authenticated user session exists
+        // Query param takes highest priority — lets the user override mid-session
+        if (isset($_GET['v']) && in_array($_GET['v'], $allowed)) {
+            $version = $_GET['v'];
+
+            // Persist it back to the session so subsequent page loads remember it
+            if (isset($_SESSION['user_id'])) {
+                $db   = Database::getInstance();
+                $stmt = $db->prepare("
+                    INSERT INTO user_preferences (user_id, bible_version)
+                    VALUES (:uid, :ver)
+                    ON DUPLICATE KEY UPDATE bible_version = :ver_update
+                ");
+                $stmt->execute([
+                    'uid'        => $_SESSION['user_id'],
+                    'ver'        => $version,
+                    'ver_update' => $version,
+                ]);
+            }
+
+            return $version;
+        }
+
+        // Then check persisted user preference
         if (isset($_SESSION['user_id'])) {
             $db   = Database::getInstance();
-            $stmt = $db->prepare("SELECT bible_version FROM user_preferences WHERE user_id = :uid LIMIT 1");
+            $stmt = $db->prepare("
+                SELECT bible_version FROM user_preferences
+                WHERE user_id = :uid LIMIT 1
+            ");
             $stmt->execute(['uid' => $_SESSION['user_id']]);
             $preference = $stmt->fetchColumn();
 
-            if ($preference) {
+            if ($preference && in_array($preference, $allowed)) {
                 return $preference;
             }
         }
 
-        // Check if explicit query parameter overrode selection (e.g., ?v=asv)
-        if (isset($_GET['v']) && in_array($_GET['v'], ['kjv', 'asv', 'web', 'bbe', 'rv_1909'])) {
-            return $_GET['v'];
-        }
-
-        return $version;
+        return 'kjv';
     }
 
     /**
@@ -205,16 +224,11 @@ class BibleController extends BaseController
             return $this->json([]);
         }
 
-        $db   = Database::getInstance();
-        $stmt = $db->prepare("
-            SELECT book_name, chapter, verse, text
-            FROM bible_verses_kjv
-            WHERE text LIKE :q
-            LIMIT 20
-        ");
+        $version    = $this->resolveActiveVersion();
+        $bibleModel = new Bible();
+        $results    = $bibleModel->searchVerses($query, $version);
 
-        $stmt->execute(['q' => "%$query%"]);
-        return $this->json($stmt->fetchAll());
+        return $this->json($results);
     }
 
     /**
@@ -223,10 +237,9 @@ class BibleController extends BaseController
      */
     public function random(Request $request): Response
     {
-        $db = Database::getInstance();
-        // Fetch one random verse for a "Who said this?" or "Complete the verse" challenge
-        $stmt = $db->query("SELECT book_name, chapter, verse, text FROM bible_verses_kjv ORDER BY RAND() LIMIT 1");
+        $version    = $this->resolveActiveVersion();
+        $bibleModel = new Bible();
 
-        return $this->json($stmt->fetch());
+        return $this->json($bibleModel->getRandomVerse($version));
     }
 }

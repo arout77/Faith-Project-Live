@@ -12,8 +12,8 @@
             <nav class="hidden md:flex items-center gap-6 h-full">
                 
                 <div class="relative group h-16 flex items-center">
-                    <button id="navBibleTrigger" class="nav-rgb-link nav-link text-slate-200 hover:text-white flex items-center gap-1.5 focus:outline-none cursor-pointer py-5 text-sm font-medium">
-                        <span>Read the Bible</span>
+                    <button id="navBibleTrigger" class="nav-rgb-link nav-link text-white hover:text-white flex items-center gap-1.5 focus:outline-none cursor-pointer py-5 text-sm font-medium">
+                        <span class="text-white">Read the Bible</span>
                         <svg class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200 group-hover:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7" />
                         </svg>
@@ -42,6 +42,20 @@
 
                     </div>
                 </div>
+
+                {# Version selector dropdown #}
+                <div class="relative">
+                    <select id="versionSelector"
+                            class="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:border-teal-400 focus:border-teal-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-gray-200">
+                            <option value="" disabled selected>Translation</option>
+                        {% set versions = {'kjv': 'KJV', 'asv': 'ASV', 'web': 'WEB', 'bbe': 'BBE', 'rv_1909': 'RV 1909'} %}
+                        {% for value, label in versions %}
+                            <option value="{{ value }}" {% if active_version == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <span class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-sky-500 text-xs">▾</span>
+                </div>
+
 
                 <a href="{{ base_url }}/videos" class="nav-rgb-link text-slate-200 hover:text-white text-sm font-medium py-5">Videos</a>
                 <a href="{{ base_url }}/trivia" class="nav-rgb-link text-slate-200 hover:text-white text-sm font-medium py-5">Trivia</a>
@@ -351,5 +365,61 @@
                 });
             });
         }
+
+        const dropdown = document.getElementById('bible-version-dropdown');
+        if (!dropdown) return;
+
+        // 1. Determine Auth State & Initial Value Pipeline
+        // (Replace 'window.userIsLoggedIn' and 'window.userSavedVersion' with your framework's Twig injection tags, e.g., {{ app.user ? 'true' : 'false' }})
+        const isLoggedIn = window.userIsLoggedIn || false; 
+        const dbVersion = window.userSavedVersion || null;  
+
+        // Establish the initial active version choice
+        let activeVersion = 'kjv';
+
+        if (isLoggedIn && dbVersion) {
+            activeVersion = dbVersion.toLowerCase();
+        } else {
+            const localVersion = localStorage.getItem('preferred_bible_version');
+            if (localVersion) {
+                activeVersion = localVersion.toLowerCase();
+            }
+        }
+
+        // Set the dropdown indicator to match the stored setting
+        dropdown.value = activeVersion;
+
+        // 2. Handle Selection Changes & Route Storage Targets
+        dropdown.addEventListener('change', (e) => {
+            const selectedVersion = e.target.value;
+
+            if (isLoggedIn) {
+                // Logged in: Sync directly to the user_preferences table via endpoint
+                fetch('{{ base_url }}/api/user/preferences', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ bible_version: selectedVersion })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log(`Preferences synced to database: ${selectedVersion}`);
+                        // Optional: Trigger your content panel to reload verses dynamically here
+                        // window.location.reload(); 
+                    }
+                })
+                .catch(err => console.error('Failed to sync translation choice to DB:', err));
+
+            } else {
+                // Guest User: Offload persistence directly to LocalStorage
+                localStorage.setItem('preferred_bible_version', selectedVersion);
+                console.log(`Preferences saved to localStorage: ${selectedVersion}`);
+                
+                // Optional: Reload or dispatch an event to refresh unauthenticated view panels
+                // window.location.reload();
+            }
+        });
     });
 </script>

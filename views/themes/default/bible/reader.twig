@@ -2,7 +2,7 @@
 {% extends "layouts/main.twig" %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto px-4 py-12">
+<div class="max-w-4xl mx-auto px-4 py-12 bg-gray-200 dark:bg-gray-800">
     
     <div class="reader-toolbar p-6 rounded-2xl mb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div>
@@ -16,27 +16,27 @@
         <div class="flex items-center gap-4 text-sm font-mono font-bold">
             {# FIXED: Updated conditions and paths to use current_chapter and current_book #}
             {% if current_chapter > 1 %}
-                <a href="{{ base_url }}/bible/{{ current_book }}/{{ current_chapter - 1 }}" 
-                   class="px-4 py-2 glass border-slate-800 rounded-lg text-slate-400 hover:text-white transition">
+                <a href="{{ base_url }}/bible/{{ current_book }}/{{ current_chapter - 1 }}?v={{ active_version }}" 
+                   class="px-4 py-2 border-slate-800 rounded-lg text-slate-400 hover:text-white transition">
                    ← Ch. {{ current_chapter - 1 }}
                 </a>
             {% else %}
-                <span class="px-4 py-2 border border-slate-900 bg-slate-950/40 rounded-lg text-slate-700 cursor-not-allowed select-none">
+                <span class="px-4 py-2 border border-slate-900 bg-indigo-200 rounded-lg text-slate-700 cursor-not-allowed select-none">
                     ← Start
                 </span>
             {% endif %}
 
             {# FIXED: Pulls total_chapters cleanly from the layout context #}
-            <span class="text-sky-400 font-bold px-2">
+            <span class="text-sky-600 font-bold px-2">
                 Chapter {{ current_chapter }} of <span id="readerTotalChapters">{{ total_chapters }}</span>
             </span>
 
             {# FIXED: Navigation buttons point safely to matching paths #}
-            <a id="readerNextBtn" href="{{ base_url }}/bible/{{ current_book }}/{{ current_chapter + 1 }}" 
-               class="px-4 py-2 glass border-slate-800 rounded-lg text-slate-400 hover:text-white transition hidden">
+            <a id="readerNextBtn" href="{{ base_url }}/bible/{{ current_book }}/{{ current_chapter + 1 }}?v={{ active_version }}" 
+               class="px-4 py-2 border-slate-800 rounded-lg bg-indigo-200 text-gray-700 hover:text-white transition hidden">
                Ch. {{ current_chapter + 1 }} →
             </a>
-            <span id="readerEndBtn" class="px-4 py-2 border border-slate-900 bg-slate-950/40 rounded-lg text-slate-700 cursor-not-allowed select-none hidden">
+            <span id="readerEndBtn" class="px-4 py-2 border border-slate-900 bg-indigo-200 rounded-lg text-gray-700 cursor-not-allowed select-none hidden">
                 End →
             </span>
         </div>
@@ -199,6 +199,47 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     }
+    
+    // --- Version Switcher ---
+    const versionSelector = document.getElementById('versionSelector');
+
+    versionSelector.addEventListener('change', function () {
+        onVersionChange(this.value);
+    });
+
+    function onVersionChange(selectedVersion) {
+        localStorage.setItem('preferred_bible_version', selectedVersion);
+
+        if (isLoggedIn) {
+            fetch('/user/preferences/bible', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ version: selectedVersion })
+            }).catch(err => console.error('Version preference save failed:', err));
+        }
+
+        const url = new URL(window.location.href);
+        url.searchParams.set('v', selectedVersion);
+        window.location.href = url.toString();
+    }
+
+    // Sync localStorage version into the URL so the server always sees it
+    (function syncVersionParam() {
+        const url = new URL(window.location.href);
+
+        // If the URL already has ?v=, write it back to localStorage so they stay in sync
+        if (url.searchParams.has('v')) {
+            localStorage.setItem('preferred_bible_version', url.searchParams.get('v'));
+            return;
+        }
+
+        // Otherwise, if localStorage has a preference, redirect with it appended
+        const stored = localStorage.getItem('preferred_bible_version');
+        if (stored) {
+            url.searchParams.set('v', stored);
+            window.location.replace(url.toString());
+        }
+    })();
 });
 </script>
 {% endblock %}
